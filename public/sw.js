@@ -1,4 +1,4 @@
-const CACHE_NAME = 'polski-pwa-v6';
+const CACHE_NAME = 'polski-pwa-v7';
 
 self.addEventListener('install', event => {
   self.skipWaiting();
@@ -14,9 +14,7 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
-  const url = new URL(event.request.url);
-
-  // OBRAZKI: Cache-First (jedyny typ pliku który keszujemy)
+  // OBRAZKI: Cache-First (jedyny typ pliku który keszujemy lokalnie)
   if (event.request.destination === 'image') {
     event.respondWith(
       caches.match(event.request).then(cachedResponse => {
@@ -31,8 +29,6 @@ self.addEventListener('fetch', event => {
     );
     return;
   }
-
-  // WSZYSTKO INNE (HTML, JS, JSON, API, fonty, CSS): Network Only
-  // Nie keszujemy żadnych plików poza obrazkami.
-  event.respondWith(fetch(event.request));
+  // Pozostałe zasoby (w tym strumieniowanie audio MP3 z nagłówkiem Range, JSON, API)
+  // obsługiwane bezpośrednio przez natywny stos przeglądarki.
 });

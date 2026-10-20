@@ -54,8 +54,9 @@ collections:
     fields:
       - { label: 'Tytuł', name: title, widget: string }
       - { label: 'Kategoria Główna', name: category, widget: relation, collection: kategorie, search_fields: [title], value_field: title, display_fields: [title], required: true }
-      - { label: 'Tagi / Podkategorie (opcjonalnie)', name: subcategory, widget: relation, collection: podkategorie, search_fields: [title], value_field: title, display_fields: [title], multiple: true, required: false }
+      - { label: 'Podkategoria (opcjonalnie)', name: subcategory, widget: relation, collection: podkategorie, search_fields: [title], value_field: title, display_fields: [title], multiple: false, required: false }
       - { label: 'Miniaturka', name: thumbnail, widget: image, required: false }
+      - { label: 'Nagranie Audio MP3 (opcjonalnie)', name: audio, widget: file, required: false }
       - { label: 'Treść', name: content, widget: markdown }
 
   - name: notatki_podstawa
@@ -67,8 +68,9 @@ collections:
     fields:
       - { label: 'Tytuł', name: title, widget: string }
       - { label: 'Kategoria Główna', name: category, widget: relation, collection: kategorie, search_fields: [title], value_field: title, display_fields: [title], required: true }
-      - { label: 'Tagi / Podkategorie (opcjonalnie)', name: subcategory, widget: relation, collection: podkategorie, search_fields: [title], value_field: title, display_fields: [title], multiple: true, required: false }
+      - { label: 'Podkategoria (opcjonalnie)', name: subcategory, widget: relation, collection: podkategorie, search_fields: [title], value_field: title, display_fields: [title], multiple: false, required: false }
       - { label: 'Miniaturka', name: thumbnail, widget: image, required: false }
+      - { label: 'Nagranie Audio MP3 (opcjonalnie)', name: audio, widget: file, required: false }
       - { label: 'Treść', name: content, widget: markdown }
 
   - name: notatki_rozszerzenie
@@ -80,6 +82,7 @@ collections:
     fields:
       - { label: 'Tytuł', name: title, widget: string }
       - { label: 'Kategoria Główna', name: category, widget: relation, collection: kategorie, search_fields: [title], value_field: title, display_fields: [title], required: true }
-      - { label: 'Tagi / Podkategorie (opcjonalnie)', name: subcategory, widget: relation, collection: podkategorie, search_fields: [title], value_field: title, display_fields: [title], multiple: true, required: false }
+      - { label: 'Podkategoria (opcjonalnie)', name: subcategory, widget: relation, collection: podkategorie, search_fields: [title], value_field: title, display_fields: [title], multiple: false, required: false }
       - { label: 'Miniaturka', name: thumbnail, widget: image, required: false }
+      - { label: 'Nagranie Audio MP3 (opcjonalnie)', name: audio, widget: file, required: false }
       - { label: 'Treść', name: content, widget: markdown }

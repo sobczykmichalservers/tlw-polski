@@ -32,12 +32,16 @@ document.addEventListener("DOMContentLoaded", () => {
             return url;
         }
         const clean = url.startsWith('/') ? url : '/' + url;
-        return `https://raw.githubusercontent.com/${GITHUB_REPO}/main/public${clean}`;
+        const encodedPath = clean.split('/').map(seg => {
+            try { return encodeURIComponent(decodeURIComponent(seg)); }
+            catch (e) { return encodeURIComponent(seg); }
+        }).join('/');
+        return `https://raw.githubusercontent.com/${GITHUB_REPO}/main/public${encodedPath}`;
     }
 
     let allPosts = [];
     let activeCategory = 'Wszystkie';
-    let activeSubcategories = [];
+    let activeSubcategory = 'Wszystkie';
     let currentLevel = '';
     let settingsData = null;
     let lastFetchedLevel = '';
@@ -160,6 +164,12 @@ document.addEventListener("DOMContentLoaded", () => {
     const allViews = [loginView, homeView, articleView, notFoundView];
 
     function showView(viewEl) {
+        if (viewEl !== articleView) {
+            const activeAudio = document.getElementById('article-audio');
+            if (activeAudio) {
+                activeAudio.pause();
+            }
+        }
         allViews.forEach(v => {
             if (v === viewEl) {
                 v.classList.remove('hidden');
@@ -201,6 +211,20 @@ document.addEventListener("DOMContentLoaded", () => {
         if(notFoundView) notFoundView.style.display = 'flex';
     }
 
+    function fetchSettingsJson() {
+        const rawUrl = `https://raw.githubusercontent.com/${GITHUB_REPO}/main/public/data/settings.json?t=${Math.floor(Date.now() / 60000)}`;
+        return fetch(rawUrl, { cache: 'no-cache' })
+            .then(r => {
+                if (!r.ok) throw new Error('RAW');
+                return r.json();
+            })
+            .catch(() => {
+                return fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/public/data/settings.json`, { cache: 'no-cache' })
+                    .then(res => { if (res.status === 404) return null; if (!res.ok) throw new Error('API'); return res.json(); })
+                    .then(fi => fi ? fetch(`${fi.download_url}?v=${fi.sha}`, { cache: 'no-cache' }).then(r => r.json()) : null);
+            });
+    }
+
     function requireAuth(level, onSuccess) {
         const savedPass = localStorage.getItem(`pass_${level}`);
         if (!savedPass) {
@@ -211,15 +235,13 @@ document.addEventListener("DOMContentLoaded", () => {
         if (settingsData) {
             validateAndProceed(level, savedPass, onSuccess);
         } else {
-            fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/public/data/settings.json`, { cache: 'no-cache' })
-                .then(res => { if (res.status === 404) return null; if (!res.ok) throw new Error('API'); return res.json(); })
-                .then(fi => fi ? fetch(`${fi.download_url}?v=${fi.sha}`, { cache: 'no-cache' }).then(r => r.json()) : null)
+            fetchSettingsJson()
                 .then(s => { 
                     if (s) settingsData = s; 
                     validateAndProceed(level, savedPass, onSuccess);
                 })
                 .catch(() => {
-                    // W razie błędu API (limit) wpuszczamy ucznia awaryjnie, by nie stracił dostępu przed maturą
+                    // W razie błędu sieci wpuszczamy ucznia awaryjnie, by nie stracił dostępu przed maturą
                     onSuccess();
                 });
         }
@@ -302,9 +324,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function fetchSettingsAndVerify(entered) {
-        fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/public/data/settings.json`, { cache: 'no-cache' })
-            .then(res => { if (res.status === 404) return null; if (!res.ok) throw new Error('API'); return res.json(); })
-            .then(fi => fi ? fetch(`${fi.download_url}?v=${fi.sha}`, { cache: 'no-cache' }).then(r => r.json()) : null)
+        fetchSettingsJson()
             .then(s => { if (s) settingsData = s; checkPassword(entered); })
             .catch(() => {
                 loginError.textContent = 'Błąd połączenia. Odśwież stronę.';
@@ -461,7 +481,7 @@ document.addEventListener("DOMContentLoaded", () => {
             btn.className = `${baseClass} ${name === activeCategory ? activeClass : inactiveClass}`;
             btn.addEventListener('click', () => {
                 activeCategory = name;
-                activeSubcategories = []; // Reset podkategorii przy zmianie głównej
+                activeSubcategory = 'Wszystkie'; // Reset podkategorii przy zmianie głównej
                 
                 Array.from(categoryTabs.children).forEach(c => {
                     c.className = `${baseClass} ${c.dataset.cat === activeCategory ? activeClass : inactiveClass}`;
@@ -519,7 +539,7 @@ document.addEventListener("DOMContentLoaded", () => {
             
             const color = tagColors[name] || 'indigo';
             const c = colorClasses[color] || colorClasses['indigo'];
-            const isActive = name === 'Wszystkie' ? activeSubcategories.length === 0 : activeSubcategories.includes(name);
+            const isActive = (name === activeSubcategory);
             
             if (name === 'Wszystkie') {
                 const activeAllClass = 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 border-slate-900 dark:border-slate-100';
@@ -529,14 +549,10 @@ document.addEventListener("DOMContentLoaded", () => {
             }
 
             btn.addEventListener('click', () => {
-                if (name === 'Wszystkie') {
-                    activeSubcategories = [];
+                if (name === 'Wszystkie' || activeSubcategory === name) {
+                    activeSubcategory = 'Wszystkie';
                 } else {
-                    if (activeSubcategories.includes(name)) {
-                        activeSubcategories = activeSubcategories.filter(t => t !== name);
-                    } else {
-                        activeSubcategories.push(name);
-                    }
+                    activeSubcategory = name;
                 }
                 renderSubcategoryTabs(posts);
                 filterPosts();
@@ -556,12 +572,11 @@ document.addEventListener("DOMContentLoaded", () => {
             // Warunek kategorii głównej
             let matchesCategory = isFavTab ? favorites.includes(card.dataset.slug) : (activeCategory === 'Wszystkie' || card.dataset.category === activeCategory);
             
-            // Warunek podkategorii
+            // Warunek podkategorii (pojedynczy wybór)
             let matchesSubcategory = true;
-            if (!isFavTab && activeCategory !== 'Wszystkie' && activeSubcategories.length > 0) {
+            if (!isFavTab && activeCategory !== 'Wszystkie' && activeSubcategory !== 'Wszystkie') {
                 const cardTags = card.dataset.subcategory ? card.dataset.subcategory.split(',') : [];
-                // Musi posiadać wszystkie zaznaczone tagi
-                matchesSubcategory = activeSubcategories.every(sub => cardTags.includes(sub));
+                matchesSubcategory = cardTags.includes(activeSubcategory);
             }
 
             const matchesSearch = card.dataset.search.includes(query);
@@ -620,6 +635,9 @@ document.addEventListener("DOMContentLoaded", () => {
                 const c = colorClasses[color] || colorClasses['indigo'];
                 badgesHtml += `<span class="ml-2 inline-block px-2 py-0.5 ${c.badgeBg} ${c.badgeText} rounded-md text-[10px] font-bold tracking-wider">${tag}</span>`;
             });
+            if (post.audio) {
+                badgesHtml += `<span class="ml-2 inline-flex items-center px-2 py-0.5 bg-amber-50 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 rounded-md text-[10px] font-bold tracking-wider">🎧 AUDIO</span>`;
+            }
 
             card.innerHTML = `
                 <div class="h-48 overflow-hidden border-b border-slate-100 dark:border-slate-800 relative cursor-pointer" onclick="window.location.hash = '#/artykul/${currentLevel}/${post.slug}'">
@@ -652,6 +670,11 @@ document.addEventListener("DOMContentLoaded", () => {
     // --- WIDOK ARTYKUŁU ---
     function loadArticleRoute(level, slug) {
         currentLevel = level;
+        const prevAudio = document.getElementById('article-audio');
+        if (prevAudio) {
+            prevAudio.pause();
+            prevAudio.removeAttribute('src');
+        }
         showView(articleView);
         document.getElementById("progress-bar").style.transform = "scaleX(0)";
         articleContent.innerHTML = `<div class="max-w-4xl mx-auto mt-10 space-y-6 px-4"><div class="skeleton h-10 w-2/3 mx-auto"></div><div class="skeleton h-6 w-1/3 mx-auto"></div><div class="skeleton h-72 w-full rounded-2xl"></div><div class="skeleton h-4 w-full"></div><div class="skeleton h-4 w-5/6"></div><div class="skeleton h-4 w-4/6"></div></div>`;
@@ -666,8 +689,13 @@ document.addEventListener("DOMContentLoaded", () => {
         else if (level === 'SP') folder = 'notatki_sp';
         
         fetchTagsAndColors().then(() => {
-            fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/public/data/${folder}/${slug}.json`, { cache: 'no-cache', headers: { 'Accept': 'application/vnd.github.v3.raw' } })
-                .then(r => r.ok ? r.json() : null)
+            const rawUrl = `https://raw.githubusercontent.com/${GITHUB_REPO}/main/public/data/${folder}/${encodeURIComponent(slug)}.json?t=${Math.floor(Date.now() / 60000)}`;
+            fetch(rawUrl, { cache: 'no-cache' })
+                .then(r => {
+                    if (r.ok) return r.json();
+                    return fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/public/data/${folder}/${slug}.json`, { cache: 'no-cache', headers: { 'Accept': 'application/vnd.github.v3.raw' } })
+                        .then(res => res.ok ? res.json() : null);
+                })
                 .then(post => {
                     if (post) {
                         post.slug = slug;
@@ -678,8 +706,16 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
+    function formatAudioTime(sec) {
+        if (!sec || !isFinite(sec)) return '0:00';
+        const m = Math.floor(sec / 60);
+        const s = Math.floor(sec % 60);
+        return `${m}:${s < 10 ? '0' : ''}${s}`;
+    }
+
     function renderArticle(post) {
         const img = post.thumbnail ? resolveMediaUrl(post.thumbnail) : '';
+        const audioUrl = post.audio ? resolveMediaUrl(post.audio) : '';
         const cat = post.category || 'Inne';
         
         // Rozwiązanie ścieżek obrazków z CMS (/images/...) w treści notatki markdown
@@ -704,7 +740,7 @@ document.addEventListener("DOMContentLoaded", () => {
         
         if (headings.length > 1) {
             tocHtml = `
-            <div class="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 mb-10">
+            <div class="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 mb-8">
                 <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-4 flex items-center">
                     <svg class="w-5 h-5 mr-2 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"></path></svg>
                     Spis Treści
@@ -720,6 +756,44 @@ document.addEventListener("DOMContentLoaded", () => {
             });
             tocHtml += `</ul></div>`;
         }
+
+        // Odtwarzacz Audio MP3 pod Spisem Treści (z funkcją przypięcia podczas przewijania tekstu)
+        const audioHtml = audioUrl ? `
+            <div id="article-audio-wrapper" class="mb-10 no-print transition-all duration-300">
+                <div id="article-audio-card" class="bg-indigo-50/95 dark:bg-slate-800/95 backdrop-blur-md p-3.5 sm:p-4 rounded-2xl border border-indigo-200/80 dark:border-slate-700 shadow-sm transition-all duration-300">
+                    <audio id="article-audio" src="${audioUrl}" preload="none"></audio>
+                    <div class="flex flex-col gap-2.5">
+                        <div class="flex items-center justify-between gap-2">
+                            <div class="flex items-center gap-2.5 min-w-0">
+                                <button id="audio-play-btn" type="button" class="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white flex items-center justify-center shrink-0 shadow-sm transition-all focus:outline-none" title="Odtwórz / Pauza">
+                                    <svg id="audio-icon-play" class="w-5 h-5 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                                    <svg id="audio-icon-pause" class="w-5 h-5 hidden" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                                </button>
+                                <div class="min-w-0 text-left">
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="text-[11px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">🎧 Odsłuchaj artykuł</span>
+                                    </div>
+                                    <p id="audio-status-text" class="text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-200 truncate">Kliknij, aby włączyć nagranie i czytać</p>
+                                </div>
+                            </div>
+
+                            <div class="flex items-center gap-1 sm:gap-1.5 shrink-0">
+                                <button id="audio-rw-btn" type="button" class="px-2 py-1.5 rounded-lg text-xs font-semibold bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors" title="Cofnij o 10 sekund">-10s</button>
+                                <button id="audio-ff-btn" type="button" class="px-2 py-1.5 rounded-lg text-xs font-semibold bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors" title="Przewiń o 10 sekund">+10s</button>
+                                <button id="audio-speed-btn" type="button" class="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800/60 transition-colors min-w-[42px]" title="Zmień prędkość odtwarzania">1x</button>
+                                <button id="audio-unpin-btn" type="button" class="hidden p-1.5 rounded-lg text-xs font-bold text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-700 transition-colors" title="Odepnij odtwarzacz podczas przewijania">✕</button>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center gap-2.5">
+                            <span id="audio-current-time" class="text-[11px] sm:text-xs font-mono font-medium text-slate-500 dark:text-slate-400 w-9 text-right shrink-0">0:00</span>
+                            <input id="audio-seek-bar" type="range" min="0" max="100" value="0" step="0.1" class="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-600 dark:accent-indigo-400">
+                            <span id="audio-duration" class="text-[11px] sm:text-xs font-mono font-medium text-slate-500 dark:text-slate-400 w-9 shrink-0">--:--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        ` : '';
 
         // Finalny HTML
         const articleTags = Array.isArray(post.subcategory) ? post.subcategory : (post.subcategory ? [post.subcategory] : []);
@@ -761,6 +835,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 ${thumbnailHtml}
                 
                 ${tocHtml}
+                ${audioHtml}
                 
                 <div class="prose prose-slate dark:prose-invert max-w-3xl font-serif leading-relaxed prose-headings:font-sans prose-headings:font-bold prose-a:text-indigo-600 dark:prose-a:text-indigo-400 mx-auto transition-all" style="font-size: ${currentFontSize}px;">
                     ${tempDiv.innerHTML}
@@ -771,6 +846,147 @@ document.addEventListener("DOMContentLoaded", () => {
         document.getElementById(`fav-btn-${post.slug}`).addEventListener('click', () => {
             toggleFavorite(post.slug);
         });
+
+        // Inicjalizacja logiki odtwarzacza Audio MP3 (jeśli istnieje)
+        if (audioUrl) {
+            const audio = document.getElementById('article-audio');
+            const audioWrapper = document.getElementById('article-audio-wrapper');
+            const audioCard = document.getElementById('article-audio-card');
+            const playBtn = document.getElementById('audio-play-btn');
+            const iconPlay = document.getElementById('audio-icon-play');
+            const iconPause = document.getElementById('audio-icon-pause');
+            const statusText = document.getElementById('audio-status-text');
+            const rwBtn = document.getElementById('audio-rw-btn');
+            const ffBtn = document.getElementById('audio-ff-btn');
+            const speedBtn = document.getElementById('audio-speed-btn');
+            const unpinBtn = document.getElementById('audio-unpin-btn');
+            const seekBar = document.getElementById('audio-seek-bar');
+            const currentTimeEl = document.getElementById('audio-current-time');
+            const durationEl = document.getElementById('audio-duration');
+
+            const speeds = [1, 1.25, 1.5, 1.75, 2, 0.75];
+            let speedIdx = 0;
+            let isSeeking = false;
+            let isUnpinnedManually = false;
+
+            function pinPlayer() {
+                if (!isUnpinnedManually && audioWrapper && audioCard) {
+                    audioWrapper.classList.add('sticky', 'top-[72px]', 'z-30');
+                    audioCard.classList.add('shadow-lg', 'ring-1', 'ring-indigo-500/20');
+                    if (unpinBtn) unpinBtn.classList.remove('hidden');
+                }
+            }
+
+            if (unpinBtn) {
+                unpinBtn.addEventListener('click', () => {
+                    isUnpinnedManually = true;
+                    audioWrapper.classList.remove('sticky', 'top-[72px]', 'z-30');
+                    audioCard.classList.remove('shadow-lg', 'ring-1', 'ring-indigo-500/20');
+                    unpinBtn.classList.add('hidden');
+                });
+            }
+
+            playBtn.addEventListener('click', () => {
+                if (audio.paused) {
+                    isUnpinnedManually = false;
+                    pinPlayer();
+                    statusText.textContent = 'Ładowanie nagrania...';
+                    audio.play().catch(() => {
+                        statusText.textContent = 'Nie udało się odtworzyć pliku MP3';
+                    });
+                } else {
+                    audio.pause();
+                }
+            });
+
+            audio.addEventListener('play', () => {
+                iconPlay.classList.add('hidden');
+                iconPause.classList.remove('hidden');
+                statusText.textContent = 'Odtwarzanie — możesz przewijać tekst poniżej';
+                pinPlayer();
+            });
+
+            audio.addEventListener('playing', () => {
+                statusText.textContent = 'Odtwarzanie — możesz przewijać tekst poniżej';
+            });
+
+            audio.addEventListener('waiting', () => {
+                statusText.textContent = 'Buforowanie nagrania...';
+            });
+
+            audio.addEventListener('pause', () => {
+                iconPause.classList.add('hidden');
+                iconPlay.classList.remove('hidden');
+                if (!audio.ended) {
+                    statusText.textContent = 'Wstrzymano (kliknij Play, aby kontynuować)';
+                }
+            });
+
+            audio.addEventListener('ended', () => {
+                iconPause.classList.add('hidden');
+                iconPlay.classList.remove('hidden');
+                statusText.textContent = 'Zakończono odsłuchiwanie';
+                seekBar.value = 0;
+                currentTimeEl.textContent = '0:00';
+            });
+
+            const updateDuration = () => {
+                if (audio.duration && isFinite(audio.duration)) {
+                    durationEl.textContent = formatAudioTime(audio.duration);
+                }
+            };
+            audio.addEventListener('loadedmetadata', updateDuration);
+            audio.addEventListener('durationchange', updateDuration);
+
+            audio.addEventListener('timeupdate', () => {
+                if (!isSeeking) {
+                    currentTimeEl.textContent = formatAudioTime(audio.currentTime);
+                    if (audio.duration && isFinite(audio.duration)) {
+                        seekBar.value = (audio.currentTime / audio.duration) * 100;
+                    }
+                }
+            });
+
+            rwBtn.addEventListener('click', () => {
+                audio.currentTime = Math.max(0, (audio.currentTime || 0) - 10);
+            });
+
+            ffBtn.addEventListener('click', () => {
+                if (audio.duration && isFinite(audio.duration)) {
+                    audio.currentTime = Math.min(audio.duration, (audio.currentTime || 0) + 10);
+                }
+            });
+
+            speedBtn.addEventListener('click', () => {
+                speedIdx = (speedIdx + 1) % speeds.length;
+                const rate = speeds[speedIdx];
+                audio.playbackRate = rate;
+                speedBtn.textContent = `${rate}x`;
+            });
+
+            seekBar.addEventListener('input', () => {
+                isSeeking = true;
+                if (audio.duration && isFinite(audio.duration)) {
+                    currentTimeEl.textContent = formatAudioTime((parseFloat(seekBar.value) / 100) * audio.duration);
+                }
+            });
+
+            seekBar.addEventListener('change', () => {
+                const pct = parseFloat(seekBar.value);
+                if (audio.duration && isFinite(audio.duration)) {
+                    audio.currentTime = (pct / 100) * audio.duration;
+                    isSeeking = false;
+                } else {
+                    audio.addEventListener('loadedmetadata', () => {
+                        if (audio.duration && isFinite(audio.duration)) {
+                            audio.currentTime = (pct / 100) * audio.duration;
+                        }
+                        isSeeking = false;
+                    }, { once: true });
+                    audio.load();
+                }
+            });
+        }
     }
 
     // --- DARK MODE ---
