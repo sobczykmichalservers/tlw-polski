@@ -163,12 +163,16 @@ document.addEventListener("DOMContentLoaded", () => {
     // --- PRZEŁĄCZANIE WIDOKÓW Z ANIMACJĄ ---
     const allViews = [loginView, homeView, articleView, notFoundView];
 
+    function stopAllArticleAudio(resetSrc = false) {
+        document.querySelectorAll('.article-audio-el').forEach(a => {
+            a.pause();
+            if (resetSrc) a.removeAttribute('src');
+        });
+    }
+
     function showView(viewEl) {
         if (viewEl !== articleView) {
-            const activeAudio = document.getElementById('article-audio');
-            if (activeAudio) {
-                activeAudio.pause();
-            }
+            stopAllArticleAudio(false);
         }
         allViews.forEach(v => {
             if (v === viewEl) {
@@ -623,7 +627,13 @@ document.addEventListener("DOMContentLoaded", () => {
             card.className = 'group bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 transition-all flex flex-col overflow-hidden hover:shadow-md dark:hover:border-slate-700 relative';
 
             const img = post.thumbnail ? resolveMediaUrl(post.thumbnail) : 'https://images.unsplash.com/photo-1456953180671-730de08edaa7?auto=format&fit=crop&q=80&w=600&h=400';
-            let plain = (post.content || '').replace(/(\*|_|#|-|\d\.)/g, '').replace(/\n/g, ' ').trim();
+            let plain = (post.content || '')
+                .replace(/\\?\[audio(?::[^\]]*)?\\?\]/gi, '')
+                .replace(/\\?\[\/?quiz(?::[^\]]*)?\\?\]/gi, '')
+                .replace(/\\?<[^>]+\\?>/g, ' ')
+                .replace(/(\*|_|#|-|\d\.)/g, '')
+                .replace(/\s+/g, ' ')
+                .trim();
             const excerpt = plain.length > 100 ? plain.substring(0, 100) + '...' : plain;
 
             const isFav = favorites.includes(post.slug);
@@ -635,7 +645,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 const c = colorClasses[color] || colorClasses['indigo'];
                 badgesHtml += `<span class="ml-2 inline-block px-2 py-0.5 ${c.badgeBg} ${c.badgeText} rounded-md text-[10px] font-bold tracking-wider">${tag}</span>`;
             });
-            if (post.audio) {
+            const hasAudioInPost = Boolean(post.audio) || /\.mp3\b/i.test(post.content || '');
+            if (hasAudioInPost) {
                 badgesHtml += `<span class="ml-2 inline-flex items-center px-2 py-0.5 bg-amber-50 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 rounded-md text-[10px] font-bold tracking-wider">🎧 AUDIO</span>`;
             }
 
@@ -670,11 +681,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // --- WIDOK ARTYKUŁU ---
     function loadArticleRoute(level, slug) {
         currentLevel = level;
-        const prevAudio = document.getElementById('article-audio');
-        if (prevAudio) {
-            prevAudio.pause();
-            prevAudio.removeAttribute('src');
-        }
+        stopAllArticleAudio(true);
         showView(articleView);
         document.getElementById("progress-bar").style.transform = "scaleX(0)";
         articleContent.innerHTML = `<div class="max-w-4xl mx-auto mt-10 space-y-6 px-4"><div class="skeleton h-10 w-2/3 mx-auto"></div><div class="skeleton h-6 w-1/3 mx-auto"></div><div class="skeleton h-72 w-full rounded-2xl"></div><div class="skeleton h-4 w-full"></div><div class="skeleton h-4 w-5/6"></div><div class="skeleton h-4 w-4/6"></div></div>`;
@@ -713,20 +720,98 @@ document.addEventListener("DOMContentLoaded", () => {
         return `${m}:${s < 10 ? '0' : ''}${s}`;
     }
 
+    function buildAudioPlayerHtml(src, customTitle) {
+        const titleText = (customTitle && customTitle.trim()) ? customTitle.trim() : '🎧 Odsłuchaj artykuł';
+        const displayTitle = titleText.startsWith('🎧') ? titleText : `🎧 ${titleText}`;
+        return `
+            <div class="article-audio-wrapper my-8 no-print transition-all duration-300 font-sans">
+                <div class="article-audio-card bg-indigo-50/95 dark:bg-slate-800/95 backdrop-blur-md p-3.5 sm:p-4 rounded-2xl border border-indigo-200/80 dark:border-slate-700 shadow-sm transition-all duration-300">
+                    <audio class="article-audio-el" src="${src}" preload="none"></audio>
+                    <div class="flex flex-col gap-2.5">
+                        <div class="flex items-center justify-between gap-2">
+                            <div class="flex items-center gap-2.5 min-w-0">
+                                <button type="button" class="audio-play-btn w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white flex items-center justify-center shrink-0 shadow-sm transition-all focus:outline-none" title="Odtwórz / Pauza">
+                                    <svg class="audio-icon-play w-5 h-5 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                                    <svg class="audio-icon-pause w-5 h-5 hidden" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                                </button>
+                                <div class="min-w-0 text-left">
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="text-[11px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">${displayTitle}</span>
+                                    </div>
+                                    <div class="audio-status-text text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-200 truncate">Kliknij, aby włączyć nagranie i czytać</div>
+                                </div>
+                            </div>
+
+                            <div class="flex items-center gap-1 sm:gap-1.5 shrink-0">
+                                <button type="button" class="audio-rw-btn px-2 py-1.5 rounded-lg text-xs font-semibold bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors" title="Cofnij o 10 sekund">-10s</button>
+                                <button type="button" class="audio-ff-btn px-2 py-1.5 rounded-lg text-xs font-semibold bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors" title="Przewiń o 10 sekund">+10s</button>
+                                <button type="button" class="audio-speed-btn px-2.5 py-1.5 rounded-lg text-xs font-bold bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800/60 transition-colors min-w-[42px]" title="Zmień prędkość odtwarzania">1x</button>
+                                <button type="button" class="audio-unpin-btn hidden p-1.5 rounded-lg text-xs font-bold text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-700 transition-colors" title="Odepnij odtwarzacz podczas przewijania">✕</button>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center gap-2.5">
+                            <span class="audio-current-time text-[11px] sm:text-xs font-mono font-medium text-slate-500 dark:text-slate-400 w-9 text-right shrink-0">0:00</span>
+                            <input type="range" min="0" max="100" value="0" step="0.1" class="audio-seek-bar w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-600 dark:accent-indigo-400">
+                            <span class="audio-duration text-[11px] sm:text-xs font-mono font-medium text-slate-500 dark:text-slate-400 w-9 shrink-0">--:--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
     function renderArticle(post) {
         const img = post.thumbnail ? resolveMediaUrl(post.thumbnail) : '';
         const audioUrl = post.audio ? resolveMediaUrl(post.audio) : '';
         const cat = post.category || 'Inne';
         
-        // Rozwiązanie ścieżek obrazków z CMS (/images/...) w treści notatki markdown
         let rawContent = post.content || '';
+        const audioSlots = [];
+        let hasInlineMainAudio = false;
+
+        // 1. Odblokowanie tagów HTML dla quizów (<details>, <summary>, <p>), gdyby zostały wpisane w trybie Rich Text
+        rawContent = rawContent.replace(/\\<(\/?(?:details|summary|p))\\?>/gi, '<$1>');
+
+        // 2. Obsługa prostego zapisu quizów/fiszek: [quiz: Pytanie?] Odpowiedź [/quiz] (działa zarówno w Rich Text jak i Markdown)
+        rawContent = rawContent.replace(/\\?\[quiz:\s*([^\]]+?)\\?\]([\s\S]*?)\\?\[\/quiz\\?\]/gi, (match, question, answer) => {
+            const cleanQ = question.replace(/\\([[\]])/g, '$1').replace(/\n+/g, ' ').trim();
+            const cleanA = answer.replace(/\\([[\]])/g, '$1').trim();
+            const htmlA = marked.parseInline ? marked.parseInline(cleanA) : cleanA;
+            return `\n\n<details><summary>${cleanQ}</summary><p>${htmlA}</p></details>\n\n`;
+        });
+
+        // 3. Wykrywanie plików .mp3 wstawionych bezpośrednio w tekście: ![Tytuł](/images/plik.mp3) lub [Tytuł](/images/plik.mp3)
+        rawContent = rawContent.replace(/!?\[([^\]]*)\]\(\s*([^\s)]+\.mp3)\s*\)/gi, (match, label, src) => {
+            const cleanLabel = label.replace(/\\([[\]])/g, '$1').trim() || '🎧 Odsłuchaj nagranie';
+            const idx = audioSlots.length;
+            audioSlots.push({ url: resolveMediaUrl(src), label: cleanLabel });
+            return `\n\n@@AUDIO_SLOT_${idx}@@\n\n`;
+        });
+
+        // 4. Wykrywanie znacznika [audio] lub [audio: Własny tytuł] w dowolnym wybranym miejscu artykułu
+        rawContent = rawContent.replace(/\\?\[audio(?::\s*([^\]]*?))?\\?\]/gi, (match, arg) => {
+            const cleanArg = (arg || '').replace(/\\([[\]])/g, '$1').trim();
+            if (/\.mp3$/i.test(cleanArg)) {
+                const idx = audioSlots.length;
+                audioSlots.push({ url: resolveMediaUrl(cleanArg), label: '🎧 Odsłuchaj nagranie' });
+                return `\n\n@@AUDIO_SLOT_${idx}@@\n\n`;
+            }
+            if (!audioUrl) return '';
+            hasInlineMainAudio = true;
+            const idx = audioSlots.length;
+            audioSlots.push({ url: audioUrl, label: cleanArg || '🎧 Odsłuchaj artykuł' });
+            return `\n\n@@AUDIO_SLOT_${idx}@@\n\n`;
+        });
+
+        // 5. Rozwiązanie ścieżek obrazków z CMS (/images/...) w treści notatki markdown
         rawContent = rawContent.replace(/!\[(.*?)\]\(\s*(\/images\/[^\s)]+)\s*\)/g, (match, alt, src) => {
             return `![${alt}](${resolveMediaUrl(src)})`;
         });
 
         // Generowanie HTML
-        const html = DOMPurify.sanitize(marked.parse(rawContent));
-        const words = rawContent.trim().split(/\s+/).length;
+        const html = DOMPurify.sanitize(marked.parse(rawContent), { ADD_TAGS: ['details', 'summary'] });
+        const words = rawContent.replace(/@@AUDIO_SLOT_\d+@@/g, '').trim().split(/\s+/).length;
         const time = `${Math.ceil(words / 200)} min czytania`;
 
         const isFav = favorites.includes(post.slug);
@@ -757,43 +842,16 @@ document.addEventListener("DOMContentLoaded", () => {
             tocHtml += `</ul></div>`;
         }
 
-        // Odtwarzacz Audio MP3 pod Spisem Treści (z funkcją przypięcia podczas przewijania tekstu)
-        const audioHtml = audioUrl ? `
-            <div id="article-audio-wrapper" class="mb-10 no-print transition-all duration-300">
-                <div id="article-audio-card" class="bg-indigo-50/95 dark:bg-slate-800/95 backdrop-blur-md p-3.5 sm:p-4 rounded-2xl border border-indigo-200/80 dark:border-slate-700 shadow-sm transition-all duration-300">
-                    <audio id="article-audio" src="${audioUrl}" preload="none"></audio>
-                    <div class="flex flex-col gap-2.5">
-                        <div class="flex items-center justify-between gap-2">
-                            <div class="flex items-center gap-2.5 min-w-0">
-                                <button id="audio-play-btn" type="button" class="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white flex items-center justify-center shrink-0 shadow-sm transition-all focus:outline-none" title="Odtwórz / Pauza">
-                                    <svg id="audio-icon-play" class="w-5 h-5 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-                                    <svg id="audio-icon-pause" class="w-5 h-5 hidden" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
-                                </button>
-                                <div class="min-w-0 text-left">
-                                    <div class="flex items-center gap-1.5">
-                                        <span class="text-[11px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">🎧 Odsłuchaj artykuł</span>
-                                    </div>
-                                    <p id="audio-status-text" class="text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-200 truncate">Kliknij, aby włączyć nagranie i czytać</p>
-                                </div>
-                            </div>
+        // Podmiana znaczników [audio] na pełny odtwarzacz MP3 w wybranym miejscu artykułu
+        if (audioSlots.length > 0) {
+            tempDiv.innerHTML = tempDiv.innerHTML.replace(/(?:<p>\s*)?@@AUDIO_SLOT_(\d+)@@(?:\s*<\/p>)?/g, (match, idxStr) => {
+                const slot = audioSlots[parseInt(idxStr, 10)];
+                return slot ? buildAudioPlayerHtml(slot.url, slot.label) : '';
+            });
+        }
 
-                            <div class="flex items-center gap-1 sm:gap-1.5 shrink-0">
-                                <button id="audio-rw-btn" type="button" class="px-2 py-1.5 rounded-lg text-xs font-semibold bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors" title="Cofnij o 10 sekund">-10s</button>
-                                <button id="audio-ff-btn" type="button" class="px-2 py-1.5 rounded-lg text-xs font-semibold bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors" title="Przewiń o 10 sekund">+10s</button>
-                                <button id="audio-speed-btn" type="button" class="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800/60 transition-colors min-w-[42px]" title="Zmień prędkość odtwarzania">1x</button>
-                                <button id="audio-unpin-btn" type="button" class="hidden p-1.5 rounded-lg text-xs font-bold text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-700 transition-colors" title="Odepnij odtwarzacz podczas przewijania">✕</button>
-                            </div>
-                        </div>
-
-                        <div class="flex items-center gap-2.5">
-                            <span id="audio-current-time" class="text-[11px] sm:text-xs font-mono font-medium text-slate-500 dark:text-slate-400 w-9 text-right shrink-0">0:00</span>
-                            <input id="audio-seek-bar" type="range" min="0" max="100" value="0" step="0.1" class="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-600 dark:accent-indigo-400">
-                            <span id="audio-duration" class="text-[11px] sm:text-xs font-mono font-medium text-slate-500 dark:text-slate-400 w-9 shrink-0">--:--</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        ` : '';
+        // Domyślny odtwarzacz Audio MP3 pod Spisem Treści (jeśli nie wstawiono znacznika [audio] w środku tekstu)
+        const audioHtml = (audioUrl && !hasInlineMainAudio) ? buildAudioPlayerHtml(audioUrl, '🎧 Odsłuchaj artykuł') : '';
 
         // Finalny HTML
         const articleTags = Array.isArray(post.subcategory) ? post.subcategory : (post.subcategory ? [post.subcategory] : []);
@@ -847,22 +905,23 @@ document.addEventListener("DOMContentLoaded", () => {
             toggleFavorite(post.slug);
         });
 
-        // Inicjalizacja logiki odtwarzacza Audio MP3 (jeśli istnieje)
-        if (audioUrl) {
-            const audio = document.getElementById('article-audio');
-            const audioWrapper = document.getElementById('article-audio-wrapper');
-            const audioCard = document.getElementById('article-audio-card');
-            const playBtn = document.getElementById('audio-play-btn');
-            const iconPlay = document.getElementById('audio-icon-play');
-            const iconPause = document.getElementById('audio-icon-pause');
-            const statusText = document.getElementById('audio-status-text');
-            const rwBtn = document.getElementById('audio-rw-btn');
-            const ffBtn = document.getElementById('audio-ff-btn');
-            const speedBtn = document.getElementById('audio-speed-btn');
-            const unpinBtn = document.getElementById('audio-unpin-btn');
-            const seekBar = document.getElementById('audio-seek-bar');
-            const currentTimeEl = document.getElementById('audio-current-time');
-            const durationEl = document.getElementById('audio-duration');
+        // Inicjalizacja logiki wszystkich odtwarzaczy Audio MP3 w artykule
+        document.querySelectorAll('.article-audio-wrapper').forEach(audioWrapper => {
+            const audio = audioWrapper.querySelector('.article-audio-el');
+            const audioCard = audioWrapper.querySelector('.article-audio-card');
+            const playBtn = audioWrapper.querySelector('.audio-play-btn');
+            const iconPlay = audioWrapper.querySelector('.audio-icon-play');
+            const iconPause = audioWrapper.querySelector('.audio-icon-pause');
+            const statusText = audioWrapper.querySelector('.audio-status-text');
+            const rwBtn = audioWrapper.querySelector('.audio-rw-btn');
+            const ffBtn = audioWrapper.querySelector('.audio-ff-btn');
+            const speedBtn = audioWrapper.querySelector('.audio-speed-btn');
+            const unpinBtn = audioWrapper.querySelector('.audio-unpin-btn');
+            const seekBar = audioWrapper.querySelector('.audio-seek-bar');
+            const currentTimeEl = audioWrapper.querySelector('.audio-current-time');
+            const durationEl = audioWrapper.querySelector('.audio-duration');
+
+            if (!audio || !playBtn) return;
 
             const speeds = [1, 1.25, 1.5, 1.75, 2, 0.75];
             let speedIdx = 0;
@@ -877,17 +936,27 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
             }
 
+            function unpinPlayer() {
+                if (audioWrapper && audioCard) {
+                    audioWrapper.classList.remove('sticky', 'top-[72px]', 'z-30');
+                    audioCard.classList.remove('shadow-lg', 'ring-1', 'ring-indigo-500/20');
+                    if (unpinBtn) unpinBtn.classList.add('hidden');
+                }
+            }
+
             if (unpinBtn) {
                 unpinBtn.addEventListener('click', () => {
                     isUnpinnedManually = true;
-                    audioWrapper.classList.remove('sticky', 'top-[72px]', 'z-30');
-                    audioCard.classList.remove('shadow-lg', 'ring-1', 'ring-indigo-500/20');
-                    unpinBtn.classList.add('hidden');
+                    unpinPlayer();
                 });
             }
 
             playBtn.addEventListener('click', () => {
                 if (audio.paused) {
+                    // Zatrzymaj inne odtwarzacze w artykule, jeśli istnieją
+                    document.querySelectorAll('.article-audio-el').forEach(other => {
+                        if (other !== audio && !other.paused) other.pause();
+                    });
                     isUnpinnedManually = false;
                     pinPlayer();
                     statusText.textContent = 'Ładowanie nagrania...';
@@ -986,7 +1055,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     audio.load();
                 }
             });
-        }
+        });
     }
 
     // --- DARK MODE ---
