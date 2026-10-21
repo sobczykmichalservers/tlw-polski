@@ -4,5 +4,5 @@
   "subcategory": "",
   "thumbnail": "/images/obraz-wektorowy.webp",
   "audio": "/images/audio-test.mp3",
-  "content": "# naglowek 1\n\ntest\n\n# naglowek 2\n\ntekst\n\n# naglowek 3\n\nopis\n\n# naglowek 4\n\ndefinicja\n\n# naglowek 5\n\nstreszczenie\n\n# naglowek 6\n\n[audio: Posłuchaj omówienia tego fragmentu]\n\naudio test\n\n# naglowek 7\n\n[quiz: Pytanie testowe?] Pytanie testowe[/quiz]\n\n#"
+  "content": "# naglowek 1\n\ntest\n\n# naglowek 2\n\ntekst\n\n# naglowek 3\n\nopis\n\n# naglowek 4\n\ndefinicja\n\n# naglowek 5\n\nstreszczenie\n\n# naglowek 6\n\n[audio: Posłuchaj omówienia tego fragmentu]\n\naudio test\n\n# naglowek 7\n\n[quiz: Pytanie testowe?] Pytanie testowe[/quiz]\n\n[quiz: Pytanie testowe2?] Pytanie testowe2[/quiz]"
 }
