@@ -46,8 +46,10 @@ collections:
       - { label: 'Kolor Etykiety', name: color, widget: select, options: [indigo, emerald, red, amber, sky, fuchsia, slate], default: indigo }
 
   - name: notatki_sp
-    label: Notatki - Szkoła Podstawowa
+    label: Notatki - Szkoła Podstawowa (E8)
     folder: public/data/notatki_sp
+    media_folder: /public/images/e8
+    public_folder: /images/e8
     create: true
     extension: json
     format: json
@@ -56,12 +58,14 @@ collections:
       - { label: 'Kategoria Główna', name: category, widget: relation, collection: kategorie, search_fields: [title], value_field: title, display_fields: [title], required: true }
       - { label: 'Podkategoria (opcjonalnie)', name: subcategory, widget: relation, collection: podkategorie, search_fields: [title], value_field: title, display_fields: [title], multiple: false, required: false }
       - { label: 'Miniaturka', name: thumbnail, widget: image, required: false }
-      - { label: 'Nagranie Audio MP3 (opcjonalnie)', name: audio, widget: file, required: false, hint: 'Domyślnie pojawia się pod Spisem Treści. Aby wstawić odtwarzacz w konkretnym miejscu tekstu, wpisz w treści: [audio] lub [audio: Własny tytuł]' }
+      - { label: 'Nagranie Audio MP3 (opcjonalnie)', name: audio, widget: file, required: false, hint: 'Plik dźwiękowy zostanie automatycznie skompresowany do formatu lektora (Mono, 22 kHz, 32 kbps MP3). Aby wstawić odtwarzacz w wybranym miejscu tekstu, wpisz: [audio] lub [audio: Własny tytuł]' }
       - { label: 'Treść', name: content, widget: markdown, hint: 'Fiszka/Quiz: [quiz: Pytanie?] Odpowiedź [/quiz] | Odtwarzacz MP3 w wybranym miejscu: [audio]' }
 
   - name: notatki_podstawa
     label: Notatki - Matura Podstawa
     folder: public/data/notatki_podstawa
+    media_folder: /public/images/podstawa
+    public_folder: /images/podstawa
     create: true
     extension: json
     format: json
@@ -70,12 +74,14 @@ collections:
       - { label: 'Kategoria Główna', name: category, widget: relation, collection: kategorie, search_fields: [title], value_field: title, display_fields: [title], required: true }
       - { label: 'Podkategoria (opcjonalnie)', name: subcategory, widget: relation, collection: podkategorie, search_fields: [title], value_field: title, display_fields: [title], multiple: false, required: false }
       - { label: 'Miniaturka', name: thumbnail, widget: image, required: false }
-      - { label: 'Nagranie Audio MP3 (opcjonalnie)', name: audio, widget: file, required: false, hint: 'Domyślnie pojawia się pod Spisem Treści. Aby wstawić odtwarzacz w konkretnym miejscu tekstu, wpisz w treści: [audio] lub [audio: Własny tytuł]' }
+      - { label: 'Nagranie Audio MP3 (opcjonalnie)', name: audio, widget: file, required: false, hint: 'Plik dźwiękowy zostanie automatycznie skompresowany do formatu lektora (Mono, 22 kHz, 32 kbps MP3). Aby wstawić odtwarzacz w wybranym miejscu tekstu, wpisz: [audio] lub [audio: Własny tytuł]' }
       - { label: 'Treść', name: content, widget: markdown, hint: 'Fiszka/Quiz: [quiz: Pytanie?] Odpowiedź [/quiz] | Odtwarzacz MP3 w wybranym miejscu: [audio]' }
 
   - name: notatki_rozszerzenie
     label: Notatki - Matura Rozszerzenie
     folder: public/data/notatki_rozszerzenie
+    media_folder: /public/images/rozszerzenie
+    public_folder: /images/rozszerzenie
     create: true
     extension: json
     format: json
@@ -84,5 +90,5 @@ collections:
       - { label: 'Kategoria Główna', name: category, widget: relation, collection: kategorie, search_fields: [title], value_field: title, display_fields: [title], required: true }
       - { label: 'Podkategoria (opcjonalnie)', name: subcategory, widget: relation, collection: podkategorie, search_fields: [title], value_field: title, display_fields: [title], multiple: false, required: false }
       - { label: 'Miniaturka', name: thumbnail, widget: image, required: false }
-      - { label: 'Nagranie Audio MP3 (opcjonalnie)', name: audio, widget: file, required: false, hint: 'Domyślnie pojawia się pod Spisem Treści. Aby wstawić odtwarzacz w konkretnym miejscu tekstu, wpisz w treści: [audio] lub [audio: Własny tytuł]' }
+      - { label: 'Nagranie Audio MP3 (opcjonalnie)', name: audio, widget: file, required: false, hint: 'Plik dźwiękowy zostanie automatycznie skompresowany do formatu lektora (Mono, 22 kHz, 32 kbps MP3). Aby wstawić odtwarzacz w wybranym miejscu tekstu, wpisz: [audio] lub [audio: Własny tytuł]' }
       - { label: 'Treść', name: content, widget: markdown, hint: 'Fiszka/Quiz: [quiz: Pytanie?] Odpowiedź [/quiz] | Odtwarzacz MP3 w wybranym miejscu: [audio]' }

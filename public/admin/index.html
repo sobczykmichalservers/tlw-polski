@@ -5,11 +5,216 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <title>Panel Administratora - Sveltia CMS</title>
+
+    <!-- Koder MP3 (lamejs) do automatycznej kompresji nagrań lektora w przeglądarce -->
+    <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
+    <script>
+      (function () {
+        const TARGET_SAMPLE_RATE = 22050; // 22.05 kHz
+        const TARGET_BITRATE = 32;        // 32 kbps
+        const AUDIO_EXT_REGEX = /\.(mp3|wav|m4a|ogg|aac|flac|opus|webm|wma)$/i;
+
+        let toastEl = null;
+        let toastTimer = null;
+
+        function showAudioToast(message, state, autoHideMs) {
+          if (!toastEl) {
+            toastEl = document.createElement('div');
+            toastEl.style.cssText = [
+              'position:fixed',
+              'top:16px',
+              'left:50%',
+              'transform:translateX(-50%)',
+              'z-index:2147483647',
+              'padding:10px 18px',
+              'border-radius:12px',
+              'font-family:system-ui,-apple-system,sans-serif',
+              'font-size:13px',
+              'font-weight:600',
+              'box-shadow:0 10px 25px rgba(0,0,0,0.25)',
+              'transition:opacity 0.25s ease',
+              'pointer-events:none'
+            ].join(';');
+            document.body.appendChild(toastEl);
+          }
+          if (toastTimer) {
+            clearTimeout(toastTimer);
+            toastTimer = null;
+          }
+          toastEl.style.opacity = '1';
+          if (state === 'success') {
+            toastEl.style.background = '#059669';
+            toastEl.style.color = '#ffffff';
+          } else if (state === 'error') {
+            toastEl.style.background = '#dc2626';
+            toastEl.style.color = '#ffffff';
+          } else {
+            toastEl.style.background = '#4f46e5';
+            toastEl.style.color = '#ffffff';
+          }
+          toastEl.textContent = message;
+
+          if (autoHideMs) {
+            toastTimer = setTimeout(() => {
+              if (toastEl) toastEl.style.opacity = '0';
+            }, autoHideMs);
+          }
+        }
+
+        function isAudioFile(file) {
+          if (!file) return false;
+          if (file._compressedForLektor) return false;
+          return (file.type && file.type.startsWith('audio/')) || AUDIO_EXT_REGEX.test(file.name || '');
+        }
+
+        function formatMB(bytes) {
+          if (bytes < 1024 * 1024) {
+            return (bytes / 1024).toFixed(0) + ' KB';
+          }
+          return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+        }
+
+        async function compressAudioForLektor(file) {
+          if (!isAudioFile(file) || typeof lamejs === 'undefined') {
+            return file;
+          }
+
+          try {
+            showAudioToast('🎧 Kompresja nagrania dla lektora (Mono, 22 kHz, 32 kbps)...', 'loading');
+
+            const arrayBuffer = await file.arrayBuffer();
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            const audioCtx = new AudioCtx();
+            const decodedBuffer = await audioCtx.decodeAudioData(arrayBuffer.slice(0));
+            if (audioCtx.close) {
+              try { await audioCtx.close(); } catch (e) {}
+            }
+
+            // Jeśli plik jest już w formacie .mp3 i ma bitrate <= 34 kbps oraz mono, nie ma potrzeby ponownego kodowania
+            const currentBitrateKbps = decodedBuffer.duration > 0 ? ((file.size * 8) / 1000) / decodedBuffer.duration : 999;
+            if (/\.mp3$/i.test(file.name) && decodedBuffer.numberOfChannels === 1 && currentBitrateKbps <= 34) {
+              file._compressedForLektor = true;
+              showAudioToast('✅ Plik MP3 jest już zoptymalizowany (' + formatMB(file.size) + ', Mono, 32 kbps)', 'success', 4500);
+              return file;
+            }
+
+            // Próbkowanie w dół do 22 050 Hz i miksowanie do 1 kanału (Mono)
+            const targetLength = Math.max(1, Math.ceil(decodedBuffer.duration * TARGET_SAMPLE_RATE));
+            const offlineCtx = new OfflineAudioContext(1, targetLength, TARGET_SAMPLE_RATE);
+            const source = offlineCtx.createBufferSource();
+            source.buffer = decodedBuffer;
+            source.connect(offlineCtx.destination);
+            source.start(0);
+
+            const renderedBuffer = await offlineCtx.startRendering();
+            const floatSamples = renderedBuffer.getChannelData(0);
+
+            // Konwersja Float32 [-1..1] -> Int16 [-32768..32767]
+            const int16Samples = new Int16Array(floatSamples.length);
+            for (let i = 0; i < floatSamples.length; i++) {
+              const s = Math.max(-1, Math.min(1, floatSamples[i]));
+              int16Samples[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+            }
+
+            // Kodowanie MP3 (Mono, 22050 Hz, 32 kbps)
+            const mp3Encoder = new lamejs.Mp3Encoder(1, TARGET_SAMPLE_RATE, TARGET_BITRATE);
+            const mp3Chunks = [];
+            const blockSize = 1152 * 20;
+
+            for (let i = 0; i < int16Samples.length; i += blockSize) {
+              const sampleChunk = int16Samples.subarray(i, i + blockSize);
+              const mp3buf = mp3Encoder.encodeBuffer(sampleChunk);
+              if (mp3buf.length > 0) {
+                mp3Chunks.push(new Int8Array(mp3buf));
+              }
+              if ((i / blockSize) % 15 === 0) {
+                const pct = Math.min(99, Math.round((i / int16Samples.length) * 100));
+                showAudioToast('🎧 Kompresja nagrania dla lektora (Mono, 22 kHz, 32 kbps)... ' + pct + '%', 'loading');
+                await new Promise(r => setTimeout(r, 0));
+              }
+            }
+
+            const mp3End = mp3Encoder.flush();
+            if (mp3End.length > 0) {
+              mp3Chunks.push(new Int8Array(mp3End));
+            }
+
+            const mp3Blob = new Blob(mp3Chunks, { type: 'audio/mpeg' });
+            const baseName = (file.name || 'nagranie').replace(/\.[^/.]+$/, '');
+            const compressedFile = new File([mp3Blob], baseName + '.mp3', {
+              type: 'audio/mpeg',
+              lastModified: Date.now()
+            });
+            compressedFile._compressedForLektor = true;
+
+            const savedPct = file.size > 0 ? Math.max(0, Math.round((1 - compressedFile.size / file.size) * 100)) : 0;
+            showAudioToast(
+              '✅ Skompresowano audio: ' + formatMB(file.size) + ' → ' + formatMB(compressedFile.size) +
+              (savedPct > 0 ? ' (-' + savedPct + '%)' : '') + ' [Mono, 22 kHz, 32 kbps]',
+              'success',
+              6000
+            );
+            return compressedFile;
+          } catch (err) {
+            console.warn('Nie udało się skompresować pliku audio, używam oryginału:', err);
+            file._compressedForLektor = true;
+            showAudioToast('⚠️ Wgrano oryginalny plik audio (brak możliwości transkodowania)', 'error', 4000);
+            return file;
+          }
+        }
+
+        // 1. Przechwytywanie wyboru pliku przez <input type="file"> (kliknięcie "Wybierz plik")
+        window.addEventListener('change', async function (e) {
+          const input = e.target;
+          if (!input || input.tagName !== 'INPUT' || input.type !== 'file' || !input.files || !input.files.length) {
+            return;
+          }
+          const files = Array.from(input.files);
+          if (!files.some(isAudioFile)) {
+            return;
+          }
+
+          // Zatrzymujemy pierwotny event, aby Sveltia CMS poczekała na skompresowany plik MP3
+          e.stopImmediatePropagation();
+          e.stopPropagation();
+
+          const dt = new DataTransfer();
+          for (const f of files) {
+            const processed = isAudioFile(f) ? await compressAudioForLektor(f) : f;
+            dt.items.add(processed);
+          }
+
+          input.files = dt.files;
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+        }, true);
+
+        // 2. Przechwytywanie plików przeciągniętych metodą Drag & Drop
+        if (typeof DataTransferItem !== 'undefined' && DataTransferItem.prototype.webkitGetAsEntry) {
+          const origGetAsEntry = DataTransferItem.prototype.webkitGetAsEntry;
+          DataTransferItem.prototype.webkitGetAsEntry = function () {
+            const entry = origGetAsEntry.apply(this, arguments);
+            if (entry && entry.isFile && typeof entry.file === 'function' && !entry._lektorPatched) {
+              const origFile = entry.file.bind(entry);
+              entry._lektorPatched = true;
+              entry.file = function (successCb, errorCb) {
+                origFile(async function (rawFile) {
+                  try {
+                    const processed = isAudioFile(rawFile) ? await compressAudioForLektor(rawFile) : rawFile;
+                    successCb(processed);
+                  } catch (err) {
+                    successCb(rawFile);
+                  }
+                }, errorCb);
+              };
+            }
+            return entry;
+          };
+        }
+      })();
+    </script>
   </head>
   <body>
-    
     <!-- Ładujemy Sveltia CMS -->
     <script src="https://unpkg.com/@sveltia/cms/dist/sveltia-cms.js"></script>
-    
   </body>
 </html>
