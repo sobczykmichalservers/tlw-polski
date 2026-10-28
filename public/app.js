@@ -46,8 +46,9 @@ document.addEventListener("DOMContentLoaded", () => {
     let settingsData = null;
     let lastFetchedLevel = '';
     
-    // --- KOLORY TAGÓW ---
+    // --- KOLORY I KOLEJNOŚĆ TAGÓW (PODKATEGORII) ---
     let tagColors = {};
+    let tagOrder = {};
     let tagsFetched = false;
     const colorClasses = {
         'indigo': { bg: 'bg-indigo-100 dark:bg-indigo-900/60', text: 'text-indigo-700 dark:text-indigo-300', border: 'border-indigo-200 dark:border-indigo-800', badgeBg: 'bg-indigo-50 dark:bg-indigo-900/40', badgeText: 'text-indigo-600 dark:text-indigo-400' },
@@ -65,10 +66,16 @@ document.addEventListener("DOMContentLoaded", () => {
             .then(res => { if (!res.ok) throw new Error(); return res.json(); })
             .then(files => {
                 const jsonFiles = Array.isArray(files) ? files.filter(f => f.name.endsWith('.json')) : [];
-                return Promise.all(jsonFiles.map(fi => fetch(`${fi.download_url}?v=${fi.sha}`).then(r => r.json())));
+                return Promise.all(jsonFiles.map(fi => fetch(`${fi.download_url}?v=${fi.sha}`, { cache: 'no-cache' }).then(r => r.json())));
             })
             .then(tags => {
-                tags.forEach(t => { if(t.title && t.color) tagColors[t.title] = t.color; });
+                tags.forEach(t => {
+                    if (t && t.title) {
+                        if (t.color) tagColors[t.title] = t.color;
+                        const numOrder = Number(t.order);
+                        tagOrder[t.title] = Number.isFinite(numOrder) ? numOrder : 999;
+                    }
+                });
                 tagsFetched = true;
             })
             .catch(() => { tagsFetched = true; }); // fallback
@@ -437,7 +444,14 @@ document.addEventListener("DOMContentLoaded", () => {
                     ));
                 })
                 .then(posts => {
-                    allPosts = posts.filter(p => p && p.title);
+                    allPosts = posts.filter(p => p && p.title).sort((a, b) => {
+                        const subA = Array.isArray(a.subcategory) ? a.subcategory[0] : a.subcategory;
+                        const subB = Array.isArray(b.subcategory) ? b.subcategory[0] : b.subcategory;
+                        const ordA = (subA && tagOrder[subA] !== undefined) ? tagOrder[subA] : 999;
+                        const ordB = (subB && tagOrder[subB] !== undefined) ? tagOrder[subB] : 999;
+                        if (ordA !== ordB) return ordA - ordB;
+                        return (a.title || '').localeCompare(b.title || '', 'pl', { numeric: true });
+                    });
                     lastFetchedLevel = level;
                     renderTabs(allPosts);
                     renderInitialGrid(allPosts);
@@ -532,7 +546,13 @@ document.addEventListener("DOMContentLoaded", () => {
         const inactiveClass = 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700/50';
 
         createSubTab('Wszystkie', totalInCat);
-        subCounts.forEach((count, subName) => {
+        const sortedSubcategories = Array.from(subCounts.entries()).sort(([nameA], [nameB]) => {
+            const ordA = tagOrder[nameA] !== undefined ? tagOrder[nameA] : 999;
+            const ordB = tagOrder[nameB] !== undefined ? tagOrder[nameB] : 999;
+            if (ordA !== ordB) return ordA - ordB;
+            return nameA.localeCompare(nameB, 'pl', { numeric: true });
+        });
+        sortedSubcategories.forEach(([subName, count]) => {
             createSubTab(subName, count);
         });
 
