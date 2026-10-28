@@ -46,7 +46,8 @@ document.addEventListener("DOMContentLoaded", () => {
     let settingsData = null;
     let lastFetchedLevel = '';
     
-    // --- KOLORY I KOLEJNOŚĆ TAGÓW (PODKATEGORII) ---
+    // --- KOLORY I KOLEJNOŚĆ KATEGORII ORAZ PODKATEGORII ---
+    let categoryOrder = {};
     let tagColors = {};
     let tagOrder = {};
     let tagsFetched = false;
@@ -62,7 +63,7 @@ document.addEventListener("DOMContentLoaded", () => {
     
     function fetchTagsAndColors() {
         if (tagsFetched) return Promise.resolve();
-        return fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/public/data/podkategorie`, { cache: 'no-cache' })
+        const fetchSub = fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/public/data/podkategorie`, { cache: 'no-cache' })
             .then(res => { if (!res.ok) throw new Error(); return res.json(); })
             .then(files => {
                 const jsonFiles = Array.isArray(files) ? files.filter(f => f.name.endsWith('.json')) : [];
@@ -76,9 +77,28 @@ document.addEventListener("DOMContentLoaded", () => {
                         tagOrder[t.title] = Number.isFinite(numOrder) ? numOrder : 999;
                     }
                 });
-                tagsFetched = true;
             })
-            .catch(() => { tagsFetched = true; }); // fallback
+            .catch(() => {});
+
+        const fetchCat = fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/public/data/kategorie`, { cache: 'no-cache' })
+            .then(res => { if (!res.ok) throw new Error(); return res.json(); })
+            .then(files => {
+                const jsonFiles = Array.isArray(files) ? files.filter(f => f.name.endsWith('.json')) : [];
+                return Promise.all(jsonFiles.map(fi => fetch(`${fi.download_url}?v=${fi.sha}`, { cache: 'no-cache' }).then(r => r.json())));
+            })
+            .then(cats => {
+                cats.forEach(c => {
+                    if (c && c.title) {
+                        const numOrder = Number(c.order);
+                        categoryOrder[c.title] = Number.isFinite(numOrder) ? numOrder : 999;
+                    }
+                });
+            })
+            .catch(() => {});
+
+        return Promise.all([fetchSub, fetchCat]).then(() => {
+            tagsFetched = true;
+        });
     }
 
     let favorites = JSON.parse(localStorage.getItem('polski_favorites') || '[]');
@@ -445,6 +465,9 @@ document.addEventListener("DOMContentLoaded", () => {
                 })
                 .then(posts => {
                     allPosts = posts.filter(p => p && p.title).sort((a, b) => {
+                        const catOrdA = (a.category && categoryOrder[a.category] !== undefined) ? categoryOrder[a.category] : 999;
+                        const catOrdB = (b.category && categoryOrder[b.category] !== undefined) ? categoryOrder[b.category] : 999;
+                        if (catOrdA !== catOrdB) return catOrdA - catOrdB;
                         const subA = Array.isArray(a.subcategory) ? a.subcategory[0] : a.subcategory;
                         const subB = Array.isArray(b.subcategory) ? b.subcategory[0] : b.subcategory;
                         const ordA = (subA && tagOrder[subA] !== undefined) ? tagOrder[subA] : 999;
@@ -488,7 +511,13 @@ document.addEventListener("DOMContentLoaded", () => {
         createTab('Wszystkie', posts.length);
         if (favCount > 0) createTab('Ulubione', favCount, '❤️');
         
-        catCounts.forEach((count, category) => {
+        const sortedCategories = Array.from(catCounts.entries()).sort(([catA], [catB]) => {
+            const ordA = categoryOrder[catA] !== undefined ? categoryOrder[catA] : 999;
+            const ordB = categoryOrder[catB] !== undefined ? categoryOrder[catB] : 999;
+            if (ordA !== ordB) return ordA - ordB;
+            return catA.localeCompare(catB, 'pl', { numeric: true });
+        });
+        sortedCategories.forEach(([category, count]) => {
             createTab(category, count);
         });
 

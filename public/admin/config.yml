@@ -30,6 +30,7 @@ collections:
     label: Kategorie Główne
     folder: public/data/kategorie
     create: true
+    reorder: true
     extension: json
     format: json
     fields:
@@ -42,10 +43,8 @@ collections:
     reorder: true
     extension: json
     format: json
-    summary: '{{order}}. {{title}}'
     fields:
-      - { label: 'Nazwa Taga / Podkategorii', name: title, widget: string }
-      - { label: 'Kolejność wyświetlania (1, 2, 3...)', name: order, widget: number, value_type: int, min: 1, default: 10, required: false, hint: 'Mniejsza liczba = wyświetla się wcześniej na stronie (np. 1 = Antyk, 2 = Średniowiecze, 3 = Renesans, 4 = Barok itd.)' }
+      - { label: 'Nazwa Taga', name: title, widget: string }
       - { label: 'Kolor Etykiety', name: color, widget: select, options: [indigo, emerald, red, amber, sky, fuchsia, slate], default: indigo }
 
   - name: notatki_sp
